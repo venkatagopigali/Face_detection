@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h4 class="mb-0">Register Face: {{ employee.name }}</h4>
+                <span class="badge bg-primary">ID: {{ employee.employee_id }}</span>
+            </div>
+            <div class="card-body text-center">
+                <div class="alert alert-info">
+                    Please look directly at the camera. We will capture 20 images to create your face profile.
+                </div>
+                
+                <div class="video-container mb-3 d-flex justify-content-center">
+                    <video id="videoElement" width="640" height="480" autoplay style="border: 2px solid #333; border-radius: 8px;"></video>
+                </div>
+                
+                <div class="progress mb-3 d-none" id="captureProgress">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" role="progressbar" style="width: 0%;" id="progressBar">0/20 Images</div>
+                </div>
+
+                <div id="statusMessage" class="mb-3 font-weight-bold"></div>
+
+                <button id="startCaptureBtn" class="btn btn-lg btn-success">
+                    <i class="bi bi-camera-fill"></i> Start Capture
+                </button>
+                <a href="{{ url_for('employee.list_employees') }}" class="btn btn-lg btn-secondary">Done</a>
+            </div>
+        </div>
+    </div>
+</div>
+<canvas id="canvasElement" width="640" height="480" class="d-none"></canvas>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const video = document.getElementById('videoElement');
+    const canvas = document.getElementById('canvasElement');
+    const ctx = canvas.getContext('2d');
+    const startBtn = document.getElementById('startCaptureBtn');
+    const progressBar = document.getElementById('progressBar');
+    const progressContainer = document.getElementById('captureProgress');
+    const statusMessage = document.getElementById('statusMessage');
+    
+    let capturedImages = [];
+    let captureCount = 0;
+    const TOTAL_IMAGES = 20;
+
+    // Request camera access
+    if (navigator.mediaDevices.getUserMedia) {
+        navigator.mediaDevices.getUserMedia({ video: true })
+            .then(function (stream) {
+                video.srcObject = stream;
+            })
+            .catch(function (error) {
+                console.log("Something went wrong with camera!", error);
+                statusMessage.innerHTML = "<span class='text-danger'>Could not access camera. Please allow camera permissions.</span>";
+            });
+    }
+
+    startBtn.addEventListener('click', () => {
+        capturedImages = [];
+        captureCount = 0;
+        startBtn.disabled = true;
+        progressContainer.classList.remove('d-none');
+        statusMessage.innerHTML = "<span class='text-primary'>Capturing images... Please move your head slightly.</span>";
+        
+        const captureInterval = setInterval(() => {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+            capturedImages.push(dataUrl);
+            
+            captureCount++;
+            const percent = (captureCount / TOTAL_IMAGES) * 100;
+            progressBar.style.width = percent + '%';
+            progressBar.innerText = `${captureCount}/${TOTAL_IMAGES} Images`;
+
+            if (captureCount >= TOTAL_IMAGES) {
+                clearInterval(captureInterval);
+                statusMessage.innerHTML = "<span class='text-warning'>Processing images and generating encoding... Please wait.</span>";
+                
+                // Send to server
+                fetch("{{ url_for('employee.register_face', emp_id=employee.id) }}", {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ images: capturedImages })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        statusMessage.innerHTML = `<span class='text-success'>${data.message}</span>`;
+                        setTimeout(() => {
+                            window.location.href = "{{ url_for('employee.list_employees') }}";
+                        }, 2000);
+                    } else {
+                        statusMessage.innerHTML = `<span class='text-danger'>${data.message}</span>`;
+                        startBtn.disabled = false;
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    statusMessage.innerHTML = "<span class='text-danger'>Error processing images.</span>";
+                    startBtn.disabled = false;
+                });
+            }
+        }, 300); // Capture every 300ms
+    });
+</script>
+{% endblock %}

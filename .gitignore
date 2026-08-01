@@ -1,0 +1,35 @@
+# Virtual environment
+venv/
+env/
+.env
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Database files
+*.db
+*.sqlite3
+
+# Datasets and encodings (large binary files)
+datasets/
+encodings/
+uploads/
+
+# Reports (generated files)
+reports/
+
+# IDE files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -1,0 +1,32 @@
+body {
+    background-color: #121212;
+    color: #e0e0e0;
+}
+
+.card {
+    background-color: #1e1e1e;
+    border-color: #333;
+}
+
+.table {
+    color: #e0e0e0;
+}
+
+.table-hover tbody tr:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.navbar {
+    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+}
+
+.video-container {
+    background: #000;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+/* Ensure alerts don't blend in */
+.alert {
+    border: none;
+}

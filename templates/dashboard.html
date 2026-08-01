@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2 class="mb-4">Admin Dashboard</h2>
+
+<div class="row g-4 mb-4">
+    <div class="col-md-3">
+        <div class="card bg-info text-white h-100 shadow">
+            <div class="card-body text-center">
+                <h5 class="card-title">Total Employees</h5>
+                <h2 class="display-4">{{ total_employees }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-success text-white h-100 shadow">
+            <div class="card-body text-center">
+                <h5 class="card-title">Present Today</h5>
+                <h2 class="display-4">{{ present_today }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-danger text-white h-100 shadow">
+            <div class="card-body text-center">
+                <h5 class="card-title">Absent Today</h5>
+                <h2 class="display-4">{{ absent_today }}</h2>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-warning text-dark h-100 shadow">
+            <div class="card-body text-center">
+                <h5 class="card-title">Late Arrivals</h5>
+                <h2 class="display-4">{{ late_arrivals }}</h2>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
