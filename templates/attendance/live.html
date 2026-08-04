@@ -5,11 +5,25 @@
     <div class="col-md-12">
         <div class="card shadow">
             <div class="card-header d-flex justify-content-between align-items-center bg-primary text-white">
-                <h4 class="mb-0">Live Attendance Feed</h4>
-                <a href="{{ url_for('attendance.stop_camera') }}" id="stopBtn" class="btn btn-sm btn-danger">Stop Camera</a>
+                <h4 class="mb-0"><i class="bi bi-camera-video-fill me-2"></i>Live Attendance Feed</h4>
+                <a href="#" id="stopBtn" class="btn btn-sm btn-danger">
+                    <i class="bi bi-stop-circle"></i> Stop Camera
+                </a>
             </div>
-            <div class="card-body text-center">
-                <img src="{{ url_for('attendance.video_feed') }}" class="img-fluid border border-dark rounded" style="max-height: 70vh;" alt="Video Feed">
+            <div class="card-body text-center p-2" style="position: relative;">
+                <!-- Video Stream -->
+                <img src="{{ url_for('attendance.video_feed') }}"
+                     class="img-fluid border border-secondary rounded"
+                     style="max-height: 68vh; width: 100%; object-fit: contain;"
+                     alt="Live Video Feed" id="videoStream">
+
+                <!-- Login / Logout Notification Overlay -->
+                <div id="eventBanner" class="event-banner d-none">
+                    <div id="eventIcon" class="event-icon"></div>
+                    <div id="eventTitle" class="event-title"></div>
+                    <div id="eventName" class="event-name"></div>
+                    <div id="eventTime" class="event-time"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -17,10 +31,120 @@
 {% endblock %}
 
 {% block scripts %}
+<style>
+    .event-banner {
+        position: fixed;
+        bottom: 30px;
+        right: 30px;
+        z-index: 9999;
+        background: rgba(0, 0, 0, 0.88);
+        border-radius: 16px;
+        padding: 20px 30px;
+        min-width: 300px;
+        text-align: center;
+        border-left: 6px solid #00c853;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+        animation: slideIn 0.4s ease-out;
+    }
+    .event-banner.logout-banner {
+        border-left-color: #2196F3;
+    }
+    .event-icon {
+        font-size: 2.5rem;
+        margin-bottom: 6px;
+    }
+    .event-title {
+        font-size: 1.3rem;
+        font-weight: 700;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        color: #fff;
+    }
+    .event-name {
+        font-size: 1.6rem;
+        font-weight: 800;
+        color: #fff;
+        margin-top: 4px;
+    }
+    .event-time {
+        font-size: 0.95rem;
+        color: #aaa;
+        margin-top: 4px;
+    }
+    .login-text  { color: #00e676; }
+    .logout-text { color: #64b5f6; }
+
+    @keyframes slideIn {
+        from { transform: translateX(120px); opacity: 0; }
+        to   { transform: translateX(0);    opacity: 1; }
+    }
+    @keyframes fadeOut {
+        from { opacity: 1; }
+        to   { opacity: 0; transform: translateY(20px); }
+    }
+    .fade-out {
+        animation: fadeOut 0.5s ease forwards;
+    }
+</style>
+
 <script>
+    let bannerTimer = null;
+    let lastEventKey = null;   // prevent re-showing same event
+
+    function showBanner(type, name, time) {
+        const banner = document.getElementById('eventBanner');
+        const icon   = document.getElementById('eventIcon');
+        const title  = document.getElementById('eventTitle');
+        const ename  = document.getElementById('eventName');
+        const etime  = document.getElementById('eventTime');
+
+        banner.classList.remove('d-none', 'fade-out', 'logout-banner');
+
+        if (type === 'LOGIN') {
+            banner.style.borderLeftColor = '#00c853';
+            icon.innerHTML  = '✅';
+            title.innerHTML = '<span class="login-text">✔ LOGGED IN</span>';
+        } else {
+            banner.classList.add('logout-banner');
+            banner.style.borderLeftColor = '#2196F3';
+            icon.innerHTML  = '🔵';
+            title.innerHTML = '<span class="logout-text">🚪 LOGGED OUT</span>';
+        }
+
+        ename.textContent = name;
+        etime.textContent = 'Time: ' + time;
+
+        // Auto-hide after 5 seconds
+        clearTimeout(bannerTimer);
+        bannerTimer = setTimeout(() => {
+            banner.classList.add('fade-out');
+            setTimeout(() => banner.classList.add('d-none'), 500);
+        }, 5000);
+    }
+
+    // Poll the last-event endpoint every 1.5 seconds
+    function pollEvents() {
+        fetch("{{ url_for('attendance.last_event') }}")
+            .then(r => r.json())
+            .then(data => {
+                if (data && data.type) {
+                    const eventKey = data.type + data.name + data.time;
+                    if (eventKey !== lastEventKey) {
+                        lastEventKey = eventKey;
+                        showBanner(data.type, data.name, data.time);
+                    }
+                }
+            })
+            .catch(() => {});
+    }
+
+    setInterval(pollEvents, 1500);
+
+    // Stop camera button
     document.getElementById('stopBtn').addEventListener('click', function(e) {
         e.preventDefault();
-        fetch(this.href).then(() => {
+        document.getElementById('videoStream').src = '';
+        fetch("{{ url_for('attendance.stop_camera') }}").then(() => {
             window.location.href = "{{ url_for('dashboard.index') }}";
         });
     });
