@@ -61,12 +61,12 @@ def create_app(db_uri, engine_options=None):
     return app
 
 
-def setup_admin(app):
+def setup_admin(app_instance):
     """Create default admin user if not present."""
     try:
         from models.admin import Admin
         from werkzeug.security import generate_password_hash
-        with app.app_context():
+        with app_instance.app_context():
             if not Admin.query.filter_by(username='admin').first():
                 admin = Admin(
                     username='admin',
@@ -79,10 +79,10 @@ def setup_admin(app):
         logger.warning(f'Could not create default admin: {e}')
 
 
-def try_db(app):
+def try_db(app_instance):
     """Try to create all tables. Returns True on success."""
     try:
-        with app.app_context():
+        with app_instance.app_context():
             db.create_all()
         return True
     except Exception as e:
@@ -90,14 +90,15 @@ def try_db(app):
         return False
 
 
-if __name__ == '__main__':
+def get_app():
+    """Initialize and return top-level Flask app instance for WSGI / Vercel."""
     from dotenv import load_dotenv
     load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
     supabase_url = os.environ.get('DATABASE_URL', '')
     sqlite_uri   = 'sqlite:///' + os.path.join(os.path.dirname(__file__), 'attendance.db')
 
-    app = None
+    app_instance = None
 
     # ── Try Supabase first ──────────────────────────────────────────────────
     if supabase_url and 'sqlite' not in supabase_url:
@@ -107,27 +108,32 @@ if __name__ == '__main__':
             'pool_recycle': 300,
             'connect_args': {'connect_timeout': 5},
         }
-        for attempt in range(1, 3):   # 2 fast attempts
+        for attempt in range(1, 3):
             logger.info(f'  Attempt {attempt}/2')
-            app = create_app(supabase_url, supabase_engine_opts)
-            if try_db(app):
+            app_instance = create_app(supabase_url, supabase_engine_opts)
+            if try_db(app_instance):
                 logger.info('✅  Connected to Supabase!')
                 break
-            app = None
+            app_instance = None
             if attempt < 2:
-                time.sleep(2)
+                time.sleep(1)
 
     # ── Fall back to local SQLite ───────────────────────────────────────────
-    if app is None:
+    if app_instance is None:
         if supabase_url:
             logger.warning('⚠️   Supabase unreachable (project may be paused).')
-            logger.info('     → https://supabase.com/dashboard  to restore it.')
-        logger.info('🔄  Using local SQLite database  (attendance.db)')
-        app = create_app(sqlite_uri, {'pool_pre_ping': True})
-        try_db(app)
+        logger.info('🔄  Using local SQLite database (attendance.db)')
+        app_instance = create_app(sqlite_uri, {'pool_pre_ping': True})
+        try_db(app_instance)
 
     # ── Ensure admin user exists ────────────────────────────────────────────
-    setup_admin(app)
+    setup_admin(app_instance)
+    return app_instance
 
+
+# Top-level Flask instance required by Vercel & WSGI servers
+app = get_app()
+
+if __name__ == '__main__':
     logger.info('🚀  Server ready  →  http://127.0.0.1:5000')
     app.run(debug=False, host='0.0.0.0', port=5000)
