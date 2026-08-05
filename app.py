@@ -96,7 +96,13 @@ def get_app():
     load_dotenv(os.path.join(os.path.dirname(__file__), '.env'))
 
     supabase_url = os.environ.get('DATABASE_URL', '')
-    sqlite_uri   = 'sqlite:///' + os.path.join(os.path.dirname(__file__), 'attendance.db')
+    
+    # Check if Vercel / read-only filesystem
+    is_vercel = os.environ.get('VERCEL') == '1' or not os.access(os.path.dirname(__file__), os.W_OK)
+    if is_vercel:
+        sqlite_uri = 'sqlite:////tmp/attendance.db'
+    else:
+        sqlite_uri = 'sqlite:///' + os.path.join(os.path.dirname(__file__), 'attendance.db')
 
     app_instance = None
 
@@ -108,21 +114,17 @@ def get_app():
             'pool_recycle': 300,
             'connect_args': {'connect_timeout': 5},
         }
-        for attempt in range(1, 3):
-            logger.info(f'  Attempt {attempt}/2')
-            app_instance = create_app(supabase_url, supabase_engine_opts)
-            if try_db(app_instance):
-                logger.info('✅  Connected to Supabase!')
-                break
+        app_instance = create_app(supabase_url, supabase_engine_opts)
+        if try_db(app_instance):
+            logger.info('✅  Connected to Supabase!')
+        else:
             app_instance = None
-            if attempt < 2:
-                time.sleep(1)
 
-    # ── Fall back to local SQLite ───────────────────────────────────────────
+    # ── Fall back to SQLite ─────────────────────────────────────────────────
     if app_instance is None:
         if supabase_url:
             logger.warning('⚠️   Supabase unreachable (project may be paused).')
-        logger.info('🔄  Using local SQLite database (attendance.db)')
+        logger.info(f'🔄  Using SQLite database ({sqlite_uri})')
         app_instance = create_app(sqlite_uri, {'pool_pre_ping': True})
         try_db(app_instance)
 
