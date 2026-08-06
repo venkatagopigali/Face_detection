@@ -37,13 +37,13 @@
         bottom: 30px;
         right: 30px;
         z-index: 9999;
-        background: rgba(0, 0, 0, 0.88);
+        background: rgba(0, 0, 0, 0.90);
         border-radius: 16px;
         padding: 20px 30px;
-        min-width: 300px;
+        min-width: 320px;
         text-align: center;
         border-left: 6px solid #00c853;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+        box-shadow: 0 8px 32px rgba(0,0,0,0.7);
         animation: slideIn 0.4s ease-out;
     }
     .event-banner.logout-banner {
@@ -91,7 +91,23 @@
     let bannerTimer = null;
     let lastEventKey = null;   // prevent re-showing same event
 
-    function showBanner(type, name, time) {
+    // Speech Voice Announcement: "{empid} login" or "{empid} logout"
+    function speakEvent(empId, type) {
+        if ('speechSynthesis' in window) {
+            // Cancel any ongoing speech
+            window.speechSynthesis.cancel();
+            
+            // Format voice text: e.g. "EMP001 login" or "EMP001 logout"
+            const speechText = `${empId} ${type.toLowerCase()}`;
+            const utterance = new SpeechSynthesisUtterance(speechText);
+            utterance.rate = 1.0;
+            utterance.pitch = 1.0;
+            utterance.volume = 1.0;
+            window.speechSynthesis.speak(utterance);
+        }
+    }
+
+    function showBanner(type, name, empId, time) {
         const banner = document.getElementById('eventBanner');
         const icon   = document.getElementById('eventIcon');
         const title  = document.getElementById('eventTitle');
@@ -103,16 +119,19 @@
         if (type === 'LOGIN') {
             banner.style.borderLeftColor = '#00c853';
             icon.innerHTML  = '✅';
-            title.innerHTML = '<span class="login-text">✔ LOGGED IN</span>';
+            title.innerHTML = `<span class="login-text">✔ LOGGED IN [${empId}]</span>`;
         } else {
             banner.classList.add('logout-banner');
             banner.style.borderLeftColor = '#2196F3';
             icon.innerHTML  = '🔵';
-            title.innerHTML = '<span class="logout-text">🚪 LOGGED OUT</span>';
+            title.innerHTML = `<span class="logout-text">🚪 LOGGED OUT [${empId}]</span>`;
         }
 
-        ename.textContent = name;
+        ename.textContent = `${empId} - ${name}`;
         etime.textContent = 'Time: ' + time;
+
+        // Play Voice Speech Sound
+        speakEvent(empId, type);
 
         // Auto-hide after 5 seconds
         clearTimeout(bannerTimer);
@@ -122,23 +141,23 @@
         }, 5000);
     }
 
-    // Poll the last-event endpoint every 1.5 seconds
+    // Poll the last-event endpoint every 1.2 seconds
     function pollEvents() {
         fetch("{{ url_for('attendance.last_event') }}")
             .then(r => r.json())
             .then(data => {
                 if (data && data.type) {
-                    const eventKey = data.type + data.name + data.time;
+                    const eventKey = data.type + (data.emp_id || data.name) + data.time;
                     if (eventKey !== lastEventKey) {
                         lastEventKey = eventKey;
-                        showBanner(data.type, data.name, data.time);
+                        showBanner(data.type, data.name, data.emp_id || '', data.time);
                     }
                 }
             })
             .catch(() => {});
     }
 
-    setInterval(pollEvents, 1500);
+    setInterval(pollEvents, 1200);
 
     // Stop camera button
     document.getElementById('stopBtn').addEventListener('click', function(e) {

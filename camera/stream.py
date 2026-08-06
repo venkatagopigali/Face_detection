@@ -1,11 +1,13 @@
 import cv2
 import datetime
+import time
+import numpy as np
 from face_engine.engine import recognize_face
 from models import db
 from models.employee import Employee
 from models.attendance import Attendance
 
-# Global last-event store: {'type': 'LOGIN'/'LOGOUT', 'name': ..., 'emp_id': ..., 'time': ...}
+# Global last-event store: {'type': 'LOGIN'/'LOGOUT', 'name': ..., 'emp_id': ..., 'time': ..., 'timestamp': ...}
 last_event = {}
 
 
@@ -42,6 +44,7 @@ class CameraStream:
 
     def get_frame(self, app):
         global last_event
+
         # Load known faces once when streaming starts
         if not self.known_face_encodings:
             self._load_known_faces(app)
@@ -61,6 +64,8 @@ class CameraStream:
                 face_locations, face_names, confidences = [], [], []
 
             now = datetime.datetime.now()
+            trigger_pause = False
+            paused_event = None
 
             for (top, right, bottom, left), name, conf in zip(face_locations, face_names, confidences):
                 # Draw box around face
@@ -73,7 +78,7 @@ class CameraStream:
                 label = f"{name} ({conf}%)" if name != "Unknown Person" else name
                 cv2.putText(frame, label, (left + 6, bottom - 6), font, 0.6, (255, 255, 255), 1)
 
-                # Throttle: only attempt attendance every 5 seconds per person
+                # Throttle attendance attempt: 5s per employee
                 if name != "Unknown Person":
                     last_attempt_time = self._last_attempt.get(name)
                     if last_attempt_time is None or (now - last_attempt_time).total_seconds() > 5:
@@ -85,31 +90,58 @@ class CameraStream:
                                 event = self.mark_attendance(emp_id, name)
                                 if event:
                                     last_event = event
+                                    paused_event = event
+                                    trigger_pause = True
                         except Exception as e:
                             print(f"[ERROR] Attendance marking error: {e}")
 
-            # Draw last event banner on frame
+            # Draw last event banner on frame if within 5 seconds
             if last_event:
                 elapsed = (now - last_event.get('timestamp', now)).total_seconds()
-                if elapsed < 5:  # show banner for 5 seconds
+                if elapsed < 5:
                     event_type = last_event.get('type', '')
                     event_name = last_event.get('name', '')
+                    event_empid = last_event.get('emp_id', '')
                     event_time = last_event.get('time', '')
                     banner_color = (0, 180, 0) if event_type == 'LOGIN' else (0, 120, 220)
-                    banner_text = f"{'LOGGED IN' if event_type == 'LOGIN' else 'LOGGED OUT'}: {event_name} at {event_time}"
+                    banner_text = f"{event_empid} {'LOGGED IN' if event_type == 'LOGIN' else 'LOGGED OUT'} ({event_name}) at {event_time}"
                     cv2.rectangle(frame, (0, 0), (frame.shape[1], 50), banner_color, cv2.FILLED)
                     cv2.putText(frame, banner_text, (10, 35),
-                                cv2.FONT_HERSHEY_DUPLEX, 0.8, (255, 255, 255), 2)
+                                cv2.FONT_HERSHEY_DUPLEX, 0.75, (255, 255, 255), 2)
 
             ret, jpeg = cv2.imencode('.jpg', frame)
             if ret:
                 yield (b'--frame\r\n'
                        b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n\r\n')
 
+            # User requirement: "any person login logout close camera for one second"
+            if trigger_pause and paused_event:
+                # Generate a 1-second pause black screen displaying the event
+                h, w, _ = frame.shape
+                pause_frame = np.zeros((h, w, 3), dtype=np.uint8)
+                ev_type = paused_event.get('type', 'EVENT')
+                ev_id   = paused_event.get('emp_id', '')
+                ev_name = paused_event.get('name', '')
+                
+                # Draw pause notification text on black screen
+                cv2.putText(pause_frame, f"CAMERA PAUSED (1s)", (int(w*0.25), int(h*0.35)),
+                            cv2.FONT_HERSHEY_DUPLEX, 1.0, (0, 255, 255), 2)
+                cv2.putText(pause_frame, f"{ev_id} {ev_type} ({ev_name})", (int(w*0.15), int(h*0.55)),
+                            cv2.FONT_HERSHEY_DUPLEX, 1.0, (0, 255, 0) if ev_type == 'LOGIN' else (255, 165, 0), 2)
+
+                ret_p, jpeg_p = cv2.imencode('.jpg', pause_frame)
+                if ret_p:
+                    # Yield paused frame
+                    yield (b'--frame\r\n'
+                           b'Content-Type: image/jpeg\r\n\r\n' + jpeg_p.tobytes() + b'\r\n\r\n')
+                
+                # Pause camera feed for 1 second
+                time.sleep(1.0)
+
     def mark_attendance(self, emp_id, emp_name):
         """
         Mark login or update logout for the given employee.
-        Returns an event dict {'type', 'name', 'emp_id', 'time', 'timestamp'} or None.
+        Returns event dict {'type', 'name', 'emp_id', 'time', 'timestamp'} or None.
         """
         now = datetime.datetime.now()
         today = now.date()
@@ -131,7 +163,7 @@ class CameraStream:
                 )
                 db.session.add(new_record)
                 db.session.commit()
-                print(f"[LOGIN]  {emp_name} ({emp_id}) at {current_time_str}")
+                print(f"[LOGIN]  {emp_id} ({emp_name}) at {current_time_str}")
                 return {
                     'type': 'LOGIN',
                     'name': emp_name,
@@ -141,7 +173,7 @@ class CameraStream:
                 }
 
             else:
-                # Already logged in — check for logout
+                # Already logged in — check for logout (≥ 60s after login)
                 login_dt = datetime.datetime.combine(today, record.login_time)
                 elapsed = (now - login_dt).total_seconds()
 
@@ -150,7 +182,7 @@ class CameraStream:
                     logout_dt = datetime.datetime.combine(today, current_time)
                     record.working_hours = round((logout_dt - login_dt).total_seconds() / 3600, 2)
                     db.session.commit()
-                    print(f"[LOGOUT] {emp_name} ({emp_id}) at {current_time_str} | Hours: {record.working_hours}")
+                    print(f"[LOGOUT] {emp_id} ({emp_name}) at {current_time_str} | Hours: {record.working_hours}")
                     return {
                         'type': 'LOGOUT',
                         'name': emp_name,

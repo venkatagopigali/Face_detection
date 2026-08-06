@@ -10,7 +10,7 @@
             </div>
             <div class="card-body text-center">
                 <div class="alert alert-info">
-                    Please look directly at the camera. We will capture 20 images to create your face profile.
+                    Please look directly at the camera and slowly turn your head slightly. We will capture 50 images to create an accurate face profile.
                 </div>
                 
                 <div class="video-container mb-3 d-flex justify-content-center">
@@ -18,13 +18,13 @@
                 </div>
                 
                 <div class="progress mb-3 d-none" id="captureProgress">
-                    <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" role="progressbar" style="width: 0%;" id="progressBar">0/20 Images</div>
+                    <div class="progress-bar progress-bar-striped progress-bar-animated bg-success" role="progressbar" style="width: 0%;" id="progressBar">0/50 Images</div>
                 </div>
 
                 <div id="statusMessage" class="mb-3 font-weight-bold"></div>
 
                 <button id="startCaptureBtn" class="btn btn-lg btn-success">
-                    <i class="bi bi-camera-fill"></i> Start Capture
+                    <i class="bi bi-camera-fill"></i> Start Capture (50 Images)
                 </button>
                 <a href="{{ url_for('employee.list_employees') }}" class="btn btn-lg btn-secondary">Done</a>
             </div>
@@ -46,7 +46,7 @@
     
     let capturedImages = [];
     let captureCount = 0;
-    const TOTAL_IMAGES = 20;
+    const TOTAL_IMAGES = 50;
 
     // Request camera access
     if (navigator.mediaDevices.getUserMedia) {
@@ -65,11 +65,11 @@
         captureCount = 0;
         startBtn.disabled = true;
         progressContainer.classList.remove('d-none');
-        statusMessage.innerHTML = "<span class='text-primary'>Capturing images... Please move your head slightly.</span>";
+        statusMessage.innerHTML = "<span class='text-primary'>Capturing 50 face images... Please move your head slightly in different directions.</span>";
         
         const captureInterval = setInterval(() => {
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
             capturedImages.push(dataUrl);
             
             captureCount++;
@@ -79,7 +79,7 @@
 
             if (captureCount >= TOTAL_IMAGES) {
                 clearInterval(captureInterval);
-                statusMessage.innerHTML = "<span class='text-warning'>Processing images and generating encoding... Please wait.</span>";
+                statusMessage.innerHTML = "<span class='text-warning'>Processing 50 images & generating high-accuracy face profile... Please wait.</span>";
                 
                 // Send to server
                 fetch("{{ url_for('employee.register_face', emp_id=employee.id) }}", {
@@ -107,7 +107,7 @@
                     startBtn.disabled = false;
                 });
             }
-        }, 300); // Capture every 300ms
+        }, 180); // Capture every 180ms
     });
 </script>
 {% endblock %}
